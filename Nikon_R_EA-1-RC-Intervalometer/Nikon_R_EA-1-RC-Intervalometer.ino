@@ -42,14 +42,14 @@ damage the camera... who wants that?
 
 /* Ella LED FB EF 00 
  
-#define RC_CODE               0xEF00  // LED-Kette
-#define ALU_CENTER_KEY       0x15  // Menu
-#define MENU_KEY          0x09  // Center
-#define DOWN_KEY            0x0D  // Down
-#define UP_KEY            0x05  // Up
-#define LEFT_KEY       0x08  // Left
-#define RIGHT_KEY         0x0A  // Right
-#define ALU_PLAY_KEY        0x16  // Run
+#define irRcCode               0xEF00  // LED-Kette
+#define irCenterKey       0x15  // Menu
+#define irMenuKey          0x09  // Center
+#define irDownKey            0x0D  // Down
+#define irUpKey            0x05  // Up
+#define irLeftKey       0x08  // Left
+#define irRightKey         0x0A  // Right
+#define irPlayKey        0x16  // Run
 */
 
 /* Apple Remote (all models) 87 EE */
@@ -58,15 +58,15 @@ damage the camera... who wants that?
 
 // *** defines and variables ***************************
 
-#define RC_CODE           0x87EE // Apple
-#define UP_KEY            0x05  // Up
-#define DOWN_KEY          0x06  // Down
-#define LEFT_KEY          0x04  // Left
-#define RIGHT_KEY         0x03  // Right
-#define MENU_KEY          0x01  // Menu
-#define ALU_CENTER_KEY    0x2E  // Center (Alu RC)
-#define ALU_PLAY_KEY      0x2F  // Play (Alu RC)
-#define WHITE_PLAY_KEY    0x02  // Play (old white Apple Remote)
+unsigned long irRcCode           = 0x87EE;  // Apple
+unsigned int  irUpKey            = 0x05;    // Up
+unsigned int  irDownKey          = 0x06;    // Down
+unsigned int  irLeftKey          = 0x04;    // Left
+unsigned int  irRightKey         = 0x03;    // Right
+unsigned int  irMenuKey          = 0x01;    // Menu
+unsigned int  irCenterKey        = 0x2E;    // Center (Alu RC)
+unsigned int  irPlayKey          = 0x2F;    // Play (Alu RC)
+unsigned int  irWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
 
 #define LM_MODE_1ST_SINGLESHOT  1   // On the first single exposure shot, we start with lightmetering. 
 #define LM_MODE_SUB_SINGLESHOT  2   // Subsequent shots do not meter the light again.
@@ -85,7 +85,7 @@ volatile unsigned long receivedData;  // This contains the received code
 // These are used to maintain the different intervals 
 byte oldIntervalStep = 31;  // This is the initial OCR1C value (at 1 MHz / Prescaler 16384 = 524ms)
 byte newIntervalStep = 31;  // store it here after a change, since we only update OCR1C in the ISR
-int postscaler = 2;         // the postscaler doubles the timer1 by POT factors up to 2^16 (39:04:20)
+int  postscaler = 2;         // the postscaler doubles the timer1 by POT factors up to 2^16 (39:04:20)
 volatile int divider = 0;   // needed in ISR to do some modulo for intervals > 4.3 sec
 
 byte lmMode = LM_MODE_1ST_SINGLESHOT;
@@ -94,6 +94,9 @@ bool aluRemote = false;     // Apple's Alumium Remote has one more key than the 
                             // that key is ambigious, so we "lock in" to a safe mode once we know for sure
                             // that our RC is not the white one.
 
+unsigned long startMillis = 0;
+bool justBooted = true;     // Flag to support the Settings Mode available right after power-up
+bool learnMode  = false;    // This is true if we entered IR learning mode. IR commands cause no camera action then.
 
 // *** Setup **********************************************
 void setup() {
@@ -122,54 +125,92 @@ void setup() {
   TCCR1 |= (1 << CS13) | (1 << CS12) | (1 << CS11) | (1 << CS10);   // Prescaler 2^14 = 16384
  
   interrupts();
+  startMillis = millis();     // Capture at what time we powered up. 
+                              // (Note millis are 8x slower than normal here due to timer hacking)
 }
 
 
 void ReceivedCode(boolean Repeat) {
-  // Check if Transmitter is not an Apple Remote
-  if ((receivedData & 0xFFFF) != RC_CODE) {
-    if (!Repeat) blinkLED();
-    int key = receivedData>>16 & 0xFF; // extracting the command byte, full 8 bits  
-    // We could actually learn some arbitrary codes here and keep them in the EEPROM. Wouldn't
-    // be a very interactive experience though, so skipping that part until someone asks for it.
-    if ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
-    else if ((key != 0xFF) && !Repeat && digitalRead(lightmeterPin))  stopRun();
-
-  } else { // This is comfort mode with the Apple Remote. :)
-    int key = receivedData>>17 & 0x7F; // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
-
-    // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
-    if (((key == ALU_CENTER_KEY) && !Repeat) || ((key == ALU_PLAY_KEY) && !Repeat)) aluRemote = true;
+  if (justBooted && !learnMode) {
+    irRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
     
-    // Now let's determine what to do
-    if ((key == ALU_PLAY_KEY) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
-    else if ((key == ALU_PLAY_KEY) && !Repeat && digitalRead(lightmeterPin))  stopRun();
-    else if ((key == ALU_CENTER_KEY) && !Repeat) {
-      if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnce();
-      singleFrame();
-    } else if ((key == MENU_KEY) && !Repeat) { //MENU_KEY
-      if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
-      else                         TIMSK |= (1 << OCIE1A);   // disable timer interrupt
-    } else if ((key == DOWN_KEY) && !Repeat) {
-      oldIntervalStep = newIntervalStep;
-      newIntervalStep = constrain(oldIntervalStep + 10, 1, 255);
-    } else if ((key == UP_KEY) && !Repeat) {
-      oldIntervalStep = newIntervalStep;
-      if (postscaler <= 4) {  // This could lead to intervals <200ms, which we do want to avoid
-        newIntervalStep = constrain(oldIntervalStep - 10, 11, 255);
-      } else {
-        newIntervalStep = constrain(oldIntervalStep - 10, 1, 255);
-      }
-    } else if ((key == RIGHT_KEY) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
-    else if ((key == LEFT_KEY) && !Repeat) {
-      postscaler = constrain(postscaler / 2, 1, 32768);
-      if ((newIntervalStep < 11) && (postscaler <= 4)) newIntervalStep = 11; }
-    else if ((key == WHITE_PLAY_KEY) && !Repeat && !aluRemote && !digitalRead(lightmeterPin)) startRunWithMetering();
-    else if ((key == WHITE_PLAY_KEY) && !Repeat && !aluRemote && digitalRead(lightmeterPin))    stopRun();
-    else blinkFlag = false;   // if we received a partial or garbled IR code, let's not confirm reception
+    irPlayKey   = 0xFFFF;       // forget all pre-defined key codes to re-learn them
+    irCenterKey = 0xFFFF;  
+    irMenuKey   = 0xFFFF;  
+    irUpKey     = 0xFFFF;
+    irDownKey   = 0xFFFF;  
+    irLeftKey   = 0xFFFF;    
+    irRightKey  = 0xFFFF;  
+
+    blinkLEDtwice();
+    learnMode = true;           // let's learn some keys. Next calls go into the following if-block.
+
+  } else if (learnMode) {
+    blinkLEDtwice();
+    int key = receivedData>>16 & 0xFF;
+         if (irPlayKey == 0xFFFF)   irPlayKey = key;
+    else if (irCenterKey == 0xFFFF) irCenterKey = key; 
+    else if (irMenuKey == 0xFFFF)   irMenuKey = key; 
+    else if (irUpKey == 0xFFFF)     irUpKey = key; 
+    else if (irDownKey == 0xFFFF)   irDownKey = key; 
+    else if (irLeftKey == 0xFFFF)   irLeftKey = key; 
+    else if (irRightKey == 0xFFFF)  {
+      irRightKey = key; 
+      // store all keys to EEPROM here
+      
+      blinkLEDtwice();
+      blinkLEDtwice();
+      blinkLEDtwice();
+      blinkLEDtwice();
+
+      learnMode = false;
+    }
+    
+    
+  } else if (!justBooted && !learnMode) {        // This is if we are out of the Settings Mode right after Startup. Normal Operations.
+    if ((receivedData & 0xFFFF) != irRcCode) {   // Check if Transmitter is unknown
+      if (!Repeat) blinkLED();
+      int key = receivedData>>16 & 0xFF;         // extracting the command byte, full 8 bits  
+      if ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
+      else if ((key != 0xFF) && !Repeat && digitalRead(lightmeterPin))  stopRun();
+  
+    } else { // This is comfort mode with a trained Remote or the Apple Remote. :)
+      
+      int key = receivedData>>17 & 0x7F;         // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
+  
+      // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
+      if (((key == irCenterKey) && !Repeat) || ((key == irPlayKey) && !Repeat)) aluRemote = true;
+      
+      // Now let's determine what to do
+      if ((key == irPlayKey) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
+      else if ((key == irPlayKey) && !Repeat && digitalRead(lightmeterPin))  stopRun();
+      else if ((key == irCenterKey) && !Repeat) {
+        if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnce();
+        singleFrame();
+      } else if ((key == irMenuKey) && !Repeat) { //irMenuKey
+        if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
+        else                         TIMSK |= (1 << OCIE1A);   // disable timer interrupt
+      } else if ((key == irDownKey) && !Repeat) {
+        oldIntervalStep = newIntervalStep;
+        newIntervalStep = constrain(oldIntervalStep + 10, 1, 255);
+      } else if ((key == irUpKey) && !Repeat) {
+        oldIntervalStep = newIntervalStep;
+        if (postscaler <= 4) {  // This could lead to intervals <200ms, which we do want to avoid
+          newIntervalStep = constrain(oldIntervalStep - 10, 11, 255);
+        } else {
+          newIntervalStep = constrain(oldIntervalStep - 10, 1, 255);
+        }
+      } else if ((key == irRightKey) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
+      else if ((key == irLeftKey) && !Repeat) {
+        postscaler = constrain(postscaler / 2, 1, 32768);
+        if ((newIntervalStep < 11) && (postscaler <= 4)) newIntervalStep = 11; }
+      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin)) startRunWithMetering();
+      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote && digitalRead(lightmeterPin))    stopRun();
+      else blinkFlag = false;   // if we received a partial or garbled IR code, let's not confirm reception
+    }
+    if (blinkFlag) blinkLED();
+    blinkFlag = true;   // Let's assume the next code is a valid one
   }
-  if (blinkFlag) blinkLED();
-  blinkFlag = true;   // Let's assume the next code is a valid one
 }
 
 
@@ -216,13 +257,30 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 void loop() {
-// Our loop() is empty, since everthing happens through Attiny timeStamprs/Counters and Interrupts :)
+/*  Our loop() is almost empty, since everthing happens through Attiny timeStamprs/Counters and Interrupts :)
+ *  What happens here is supporting the Settings Mode, which is enabled by receiving an IR signal in the first n ms after powerup.
+ */
+  if (justBooted) {
+    if ((startMillis + 100) < millis()) {
+      justBooted = false;
+      if (!learnMode) blinkLEDtwice();
+    }
+  }
 }
 
 // Here come the various relay plays, simulating what a finger on the camera trigger would do to the built-in switches.
 void blinkLED() {
   digitalWrite(ledPin, HIGH);
   _delay_ms(20);
+  digitalWrite(ledPin, LOW);
+}
+void blinkLEDtwice() {
+  digitalWrite(ledPin, HIGH);
+  _delay_ms(50);
+  digitalWrite(ledPin, LOW);
+  _delay_ms(150);
+  digitalWrite(ledPin, HIGH);
+  _delay_ms(50);
   digitalWrite(ledPin, LOW);
 }
 void startRunWithMetering() {
