@@ -95,8 +95,8 @@ bool aluRemote = false;     // Apple's Alumium Remote has one more key than the 
                             // that our RC is not the white one.
 
 unsigned long startMillis = 0;
-bool justBooted = true;     // Flag to support the Settings Mode available right after power-up
-bool learnMode  = false;    // This is true if we entered IR learning mode. IR commands cause no camera action then.
+volatile bool justBooted = true;     // Flag to support the Settings Mode available right after power-up
+volatile bool learnMode  = false;    // This is true if we entered IR learning mode. IR commands cause no camera action then.
 
 // *** Setup **********************************************
 void setup() {
@@ -168,29 +168,34 @@ void ReceivedCode(boolean Repeat) {
     }
     
     
-  } else if (!justBooted && !learnMode) {        // This is if we are out of the Settings Mode right after Startup. Normal Operations.
+  } else if (!justBooted && !learnMode) {     // This is if we are out of the Settings Mode right after Startup. Normal Operations.
 
-    if ((receivedData & 0xFFFF) != irRcCode) {   // Check if Transmitter is unknown
+    if ((receivedData & 0xFFFF) != irRcCode) {// Check if Transmitter is unknown
+      // This is for unknown IR Transmitters. 
+      // Just does Run/Stop, executed by any key.
+      // 
       if (!Repeat) blinkLED();
-      key = receivedData>>16 & 0xFF;         // extracting the command byte, full 8 bits  
-      if ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
-      else if ((key != 0xFF) && !Repeat && digitalRead(lightmeterPin))  stopRun();
+      key = receivedData>>16 & 0xFF;          // extracting the command byte, full 8 bits  
+      if      ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))  startRunWithMetering();
+      else if ((key != 0xFF) && !Repeat &&  digitalRead(lightmeterPin))  stopRun();
   
-    } else { // This is comfort mode with a trained Remote or the Apple Remote. :)
-
-      
+    } else {                                  // This is comfort mode with a trained Remote or the Apple Remote. :)
+      // This is known IR transmitters, either trained ones or an Apple Remote.
+      // Does all the fancy functions.
+      //
       if ((receivedData & 0xFFFF) == 0x87EE) {
-        key = receivedData>>17 & 0x7F;         // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
+        key = receivedData>>17 & 0x7F;        // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
       } else {
-        key = receivedData>>16 & 0xFF;
+        key = receivedData>>16 & 0xFF;        // extract the command byte the normal way, no bit shifting and chopping.
       }
       
       // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
-      if (((key == irCenterKey) && !Repeat) || ((key == irPlayKey) && !Repeat)) aluRemote = true;
+      if (((key == irCenterKey) && !Repeat && irRcCode == 0x87EE) || 
+          ((key == irPlayKey)   && !Repeat && irRcCode == 0x87EE)) aluRemote = true;
       
       // Now let's determine what to do
-      if ((key == irPlayKey) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
-      else if ((key == irPlayKey) && !Repeat && digitalRead(lightmeterPin))  stopRun();
+      if      ((key == irPlayKey)   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
+      else if ((key == irPlayKey)   && !Repeat && digitalRead(lightmeterPin))  stopRun();
       else if ((key == irCenterKey) && !Repeat) {
         if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnce();
         singleFrame();
@@ -211,8 +216,8 @@ void ReceivedCode(boolean Repeat) {
       else if ((key == irLeftKey) && !Repeat) {
         postscaler = constrain(postscaler / 2, 1, 32768);
         if ((newIntervalStep < 11) && (postscaler <= 4)) newIntervalStep = 11; }
-      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin)) startRunWithMetering();
-      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote && digitalRead(lightmeterPin))    stopRun();
+      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin))   startRunWithMetering();
+      else if ((key == irWhitePlayKey) && !Repeat && !aluRemote &&  digitalRead(lightmeterPin))   stopRun();
       else blinkFlag = false;   // if we received a partial or garbled IR code, let's not confirm reception
     }
     if (blinkFlag) blinkLED();
