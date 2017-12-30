@@ -58,15 +58,15 @@ damage the camera... who wants that?
 
 // *** defines and variables ***************************
 
-unsigned long irRcCode           = 0x87EE;  // Apple
-unsigned int  irUpKey            = 0x05;    // Up
-unsigned int  irDownKey          = 0x06;    // Down
-unsigned int  irLeftKey          = 0x04;    // Left
-unsigned int  irRightKey         = 0x03;    // Right
-unsigned int  irMenuKey          = 0x01;    // Menu
-unsigned int  irCenterKey        = 0x2E;    // Center (Alu RC)
-unsigned int  irPlayKey          = 0x2F;    // Play (Alu RC)
-unsigned int  irWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
+volatile unsigned long irRcCode           = 0x87EE;  // Apple
+volatile unsigned int  irUpKey            = 0x05;    // Up
+volatile unsigned int  irDownKey          = 0x06;    // Down
+volatile unsigned int  irLeftKey          = 0x04;    // Left
+volatile unsigned int  irRightKey         = 0x03;    // Right
+volatile unsigned int  irMenuKey          = 0x01;    // Menu
+volatile unsigned int  irCenterKey        = 0x2E;    // Center (Alu RC)
+volatile unsigned int  irPlayKey          = 0x2F;    // Play (Alu RC)
+volatile unsigned int  irWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
 
 #define LM_MODE_1ST_SINGLESHOT  1   // On the first single exposure shot, we start with lightmetering. 
 #define LM_MODE_SUB_SINGLESHOT  2   // Subsequent shots do not meter the light again.
@@ -131,6 +131,7 @@ void setup() {
 
 
 void ReceivedCode(boolean Repeat) {
+  int key;
   if (justBooted && !learnMode) {
     irRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
     
@@ -147,7 +148,7 @@ void ReceivedCode(boolean Repeat) {
 
   } else if (learnMode) {
     blinkLEDtwice();
-    int key = receivedData>>16 & 0xFF;
+    key = receivedData>>16 & 0xFF;
          if (irPlayKey == 0xFFFF)   irPlayKey = key;
     else if (irCenterKey == 0xFFFF) irCenterKey = key; 
     else if (irMenuKey == 0xFFFF)   irMenuKey = key; 
@@ -168,16 +169,22 @@ void ReceivedCode(boolean Repeat) {
     
     
   } else if (!justBooted && !learnMode) {        // This is if we are out of the Settings Mode right after Startup. Normal Operations.
+
     if ((receivedData & 0xFFFF) != irRcCode) {   // Check if Transmitter is unknown
       if (!Repeat) blinkLED();
-      int key = receivedData>>16 & 0xFF;         // extracting the command byte, full 8 bits  
+      key = receivedData>>16 & 0xFF;         // extracting the command byte, full 8 bits  
       if ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))      startRunWithMetering();
       else if ((key != 0xFF) && !Repeat && digitalRead(lightmeterPin))  stopRun();
   
     } else { // This is comfort mode with a trained Remote or the Apple Remote. :)
+
       
-      int key = receivedData>>17 & 0x7F;         // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
-  
+      if ((receivedData & 0xFFFF) == 0x87EE) {
+        key = receivedData>>17 & 0x7F;         // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
+      } else {
+        key = receivedData>>16 & 0xFF;
+      }
+      
       // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
       if (((key == irCenterKey) && !Repeat) || ((key == irPlayKey) && !Repeat)) aluRemote = true;
       
