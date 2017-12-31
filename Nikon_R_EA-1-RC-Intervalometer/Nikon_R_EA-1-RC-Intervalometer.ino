@@ -2,8 +2,10 @@
  * To Do:
  *  [ ] Consider lightmetering in interval modes (long ones maybe?)
  *  [ ] do we need repeat?
- *  [ ] Allow IR code learning to EEPROM
-
+ *  [ ] use the struct for IR codes only, not vars *and* a struct
+ *  [ ] Optimize learning of erratic codes
+ *  [ ] Shorten the single shot times
+ *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
