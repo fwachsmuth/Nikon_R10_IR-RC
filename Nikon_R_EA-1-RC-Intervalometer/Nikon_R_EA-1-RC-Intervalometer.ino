@@ -6,6 +6,8 @@
  *  [ ] Optimize learning of erratic codes
  *  [ ] Shorten the single shot times
  *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
+ *  [ ] Test entering Settings Mode with "real" powerup
+ *  [ ] stop blinking when receiving erratic codes
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
