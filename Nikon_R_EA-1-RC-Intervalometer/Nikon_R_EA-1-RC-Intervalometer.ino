@@ -39,34 +39,32 @@ damage the camera... who wants that?
 
 */
 #include <util/delay.h> // built-in delay() runs too fast due to timer0 usage in IR receiver ISR
-
-/* Ella LED FB EF 00 
- 
-#define irRcCode               0xEF00  // LED-Kette
-#define irCenterKey       0x15  // Menu
-#define irMenuKey          0x09  // Center
-#define irDownKey            0x0D  // Down
-#define irUpKey            0x05  // Up
-#define irLeftKey       0x08  // Left
-#define irRightKey         0x0A  // Right
-#define irPlayKey        0x16  // Run
-*/
-
-/* Apple Remote (all models) 87 EE */
-// see https://en.wikipedia.org/wiki/Apple_Remote
-
+#include <EEPROM.h>     // We use the EEPROM to store learned IR codes.
 
 // *** defines and variables ***************************
 
-volatile unsigned long irRcCode           = 0x87EE;  // Apple
+volatile unsigned int  irRcCode           = 0x87EE;  // Apple Remote (all models) 87EE
+volatile unsigned int  irPlayKey          = 0x2F;    // Play (Alu RC)
+volatile unsigned int  irCenterKey        = 0x2E;    // Center (Alu RC)
+volatile unsigned int  irMenuKey          = 0x01;    // Menu
 volatile unsigned int  irUpKey            = 0x05;    // Up
 volatile unsigned int  irDownKey          = 0x06;    // Down
 volatile unsigned int  irLeftKey          = 0x04;    // Left
 volatile unsigned int  irRightKey         = 0x03;    // Right
-volatile unsigned int  irMenuKey          = 0x01;    // Menu
-volatile unsigned int  irCenterKey        = 0x2E;    // Center (Alu RC)
-volatile unsigned int  irPlayKey          = 0x2F;    // Play (Alu RC)
+
 volatile unsigned int  irWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
+
+struct RC {           // This is used to store and retrieve learned IR codes to/from EEPROM
+  int  RcCode;
+  byte PlayKey;
+  byte CenterKey;
+  byte MenuKey;
+  byte UpKey;
+  byte DownKey;
+  byte LeftKey;
+  byte RightKey;
+};
+
 
 #define LM_MODE_1ST_SINGLESHOT  1   // On the first single exposure shot, we start with lightmetering. 
 #define LM_MODE_SUB_SINGLESHOT  2   // Subsequent shots do not meter the light again.
@@ -105,6 +103,17 @@ void setup() {
   pinMode(loadPin, OUTPUT);     
   pinMode(startPin, OUTPUT);     
 
+  RC IR;                  // Variable to store custom object reads from EEPROM
+  EEPROM.get(0, IR);      // Read from the beginning, there is nothing else in the EEPORM
+  irRcCode    = IR.RcCode;
+  irPlayKey   = IR.PlayKey;
+  irCenterKey = IR.CenterKey;
+  irMenuKey   = IR.MenuKey;
+  irUpKey     = IR.UpKey;
+  irDownKey   = IR.DownKey;
+  irLeftKey   = IR.LeftKey;
+  irRightKey  = IR.RightKey;
+
   noInterrupts();
   
   // Set up timeStampr/Counter0 (assumes 1MHz clock)
@@ -131,7 +140,8 @@ void setup() {
 
 void ReceivedCode(boolean Repeat) {
   int key;
-  if ( ((receivedData>>16 & 0xFF) != 0xFF) || ((receivedData>>16 & 0xFF) != 0x00)) { // Skip everything if we receive obvious garbage
+  // Skip everything if we receive obvious garbage
+  if ( ((receivedData>>16 & 0xFF) != 0xFF) || ((receivedData>>16 & 0xFF) != 0x00) ) { 
     if (justBooted && !learnMode) {
       irRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
       
@@ -160,6 +170,17 @@ void ReceivedCode(boolean Repeat) {
         else if (irRightKey == 0xFFFF)  {
           irRightKey = key; 
           // store all keys to EEPROM here
+          RC IR = {
+            irRcCode,
+            irPlayKey,
+            irCenterKey,
+            irMenuKey,
+            irUpKey,
+            irDownKey,
+            irLeftKey,
+            irRightKey
+          };
+          EEPROM.put(0, IR);
           
           blinkLEDtwice();
           blinkLEDtwice();
@@ -171,7 +192,8 @@ void ReceivedCode(boolean Repeat) {
       }
       
       
-    } else if (!justBooted && !learnMode) {     // This is if we are out of the Settings Mode right after Startup. Normal Operations.
+    } else if (!justBooted && !learnMode) {     
+      // This is if we are out of the Settings Mode right after Startup. Normal Operations.
   
       if ((receivedData & 0xFFFF) != irRcCode) {// Check if Transmitter is unknown
         // This is for unknown IR Transmitters. 
@@ -274,7 +296,8 @@ ISR(TIMER1_COMPA_vect) {
 
 void loop() {
 /*  Our loop() is almost empty, since everthing happens through Attiny timeStamprs/Counters and Interrupts :)
- *  What happens here is supporting the Settings Mode, which is enabled by receiving an IR signal in the first n ms after powerup.
+ *  What happens here is supporting the Settings Mode, which is enabled by receiving an IR signal in the 
+ *  first n ms after powerup.
  */
   if (justBooted) {
     if ((startMillis + 100) < millis()) {
