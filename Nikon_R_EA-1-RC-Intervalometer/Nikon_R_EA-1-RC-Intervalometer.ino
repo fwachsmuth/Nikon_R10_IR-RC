@@ -3,7 +3,6 @@
  *  [ ] Consider lightmetering in interval modes (long ones maybe?)
  *  [ ] do we need repeat?
  *  [ ] use the struct for IR codes only, not vars *and* a struct
- *  [ ] Optimize learning of erratic codes
  *  [ ] Shorten the single shot times
  *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
  *  [ ] stop blinking when receiving erratic codes
@@ -160,7 +159,7 @@ void ReceivedCode(boolean Repeat) {
       learnMode = true;           // let's learn some keys. Next calls go into the following if-block.
   
     } else if (learnMode) {
-      if ((receivedData & 0xFFFF) == irRcCode) {
+      if (((receivedData & 0xFFFF) == irRcCode) && !Repeat) {
       
         blinkLEDtwice();
         key = receivedData>>16 & 0xFF;
