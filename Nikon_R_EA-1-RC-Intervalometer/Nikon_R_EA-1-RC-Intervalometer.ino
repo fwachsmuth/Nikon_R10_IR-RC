@@ -3,7 +3,6 @@
  *  [ ] Consider lightmetering in interval modes (long ones maybe?)
  *  [ ] do we need repeat?
  *  [ ] use the struct for IR codes only, not vars *and* a struct
- *  [ ] Shorten the single shot times
  *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
@@ -359,13 +358,13 @@ void meterOnce() {
  }
 void singleFrame() {
   digitalWrite(loadPin, HIGH);
-  _delay_ms(10);                // 10ms is short but subsequent exposures will have a pre-loaded cap.
+  _delay_ms(10);                // 10ms might be short but subsequent exposures will have a pre-loaded cap.
   digitalWrite(loadPin, LOW);
   digitalWrite(startPin, HIGH);
-  _delay_ms(20);
+  _delay_ms(10);
   digitalWrite(startPin, LOW);
   digitalWrite(loadPin, HIGH);  // Pre-load the start capacitor since for the next exposure. Reduces latency. :)
-  _delay_ms(50);        
+  _delay_ms(20);        
   digitalWrite(loadPin, LOW);
 }
 
