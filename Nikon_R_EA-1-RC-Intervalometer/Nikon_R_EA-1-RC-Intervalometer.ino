@@ -5,7 +5,6 @@
  *  [ ] use the struct for IR codes only, not vars *and* a struct
  *  [ ] Shorten the single shot times
  *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
- *  [ ] stop blinking when receiving erratic codes
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
@@ -85,11 +84,11 @@ volatile unsigned long receivedData;  // This contains the received code
 // These are used to maintain the different intervals 
 byte oldIntervalStep = 31;  // This is the initial OCR1C value (at 1 MHz / Prescaler 16384 = 524ms)
 byte newIntervalStep = 31;  // store it here after a change, since we only update OCR1C in the ISR
-int  postscaler = 2;         // the postscaler doubles the timer1 by POT factors up to 2^16 (39:04:20)
+int  postscaler = 2;        // the postscaler doubles the timer1 by POT factors up to 2^16 (39:04:20)
 volatile int divider = 0;   // needed in ISR to do some modulo for intervals > 4.3 sec
 
 byte lmMode = LM_MODE_1ST_SINGLESHOT;
-bool blinkFlag = true;       // This one is used to confirm reception fo valid IR codes
+bool blinkFlag = true;      // This one is used to confirm reception fo valid IR codes
 bool aluRemote = false;     // Apple's Alumium Remote has one more key than the white one. Reading
                             // that key is ambigious, so we "lock in" to a safe mode once we know for sure
                             // that our RC is not the white one.
@@ -201,10 +200,15 @@ void ReceivedCode(boolean Repeat) {
         // This is for unknown IR Transmitters. 
         // Just does Run/Stop, executed by any key.
         // 
-        if (!Repeat) blinkLED();
+        
         key = receivedData>>16 & 0xFF;          // extracting the command byte, full 8 bits  
-        if      ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin))  startRunWithMetering();
-        else if ((key != 0xFF) && !Repeat &&  digitalRead(lightmeterPin))  stopRun();
+        if      ((key != 0xFF) && !Repeat && !digitalRead(lightmeterPin)) {
+          blinkLED();
+          startRunWithMetering();
+        } else if ((key != 0xFF) && !Repeat &&  digitalRead(lightmeterPin)) {
+          blinkLED();
+          stopRun();
+        }
     
       } else {                                  // This is comfort mode with a trained Remote or the Apple Remote. :)
         // This is known IR transmitters, either trained ones or an Apple Remote.
