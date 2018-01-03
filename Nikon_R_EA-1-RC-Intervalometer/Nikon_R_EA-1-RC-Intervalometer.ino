@@ -1,7 +1,6 @@
 /* ATtiny85 IR Remote Control Receiver
  * To Do:
  *  [ ] Consider lightmetering in interval modes (long ones maybe?)
- *  [ ] cleanup variable names for IR codes (should be functions, not key names. Doh.)
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
@@ -45,20 +44,20 @@ const unsigned int   appleIrRcCode  = 0x87EE;  // Apple Remote (all models) 87EE
 const byte  appleIrPlayKey          = 0x2F;    // Play (Alu RC)
 const byte  appleIrOneFrameKey      = 0x2E;    // Center (Alu RC)
 const byte  appleIrIntervalKey      = 0x01;    // Menu
-const byte  appleIrUpKey            = 0x05;    // Up
-const byte  appleIrDownKey          = 0x06;    // Down
-const byte  appleIrLeftKey          = 0x04;    // Left
-const byte  appleIrRightKey         = 0x03;    // Right
+const byte  appleIrFasterKey        = 0x05;    // Up
+const byte  appleIrSlowerKey        = 0x06;    // Down
+const byte  appleIrDoubleSpeedKey   = 0x04;    // Left
+const byte  appleIrHalfSpeedKey     = 0x03;    // Right
 const byte  appleIrWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
 
-volatile unsigned int  learnedIrRcCode       = 0;       // This is where the learned IR Codes go,
-volatile unsigned int  learnedIrPlayKey      = 0;       // either loaded from EEPROM or freshly
-volatile unsigned int  learnedIrOneFrameKey  = 0;       // learned.
-volatile unsigned int  learnedIrIntervalKey  = 0;    
-volatile unsigned int  learnedIrUpKey        = 0;    
-volatile unsigned int  learnedIrDownKey      = 0;    
-volatile unsigned int  learnedIrLeftKey      = 0;    
-volatile unsigned int  learnedIrRightKey     = 0;    
+volatile unsigned int  learnedIrRcCode          = 0;       // This is where the learned IR Codes go,
+volatile unsigned int  learnedIrPlayKey         = 0;       // either loaded from EEPROM or freshly
+volatile unsigned int  learnedIrOneFrameKey     = 0;       // learned.
+volatile unsigned int  learnedIrIntervalKey     = 0;    
+volatile unsigned int  learnedIrFasterKey       = 0;    
+volatile unsigned int  learnedIrSlowerKey       = 0;    
+volatile unsigned int  learnedIrDoubleSpeedKey  = 0;    
+volatile unsigned int  learnedIrHalfSpeedKey    = 0;    
 
 
 struct RC {           // This is used to store and retrieve learned IR codes to/from EEPROM
@@ -66,10 +65,10 @@ struct RC {           // This is used to store and retrieve learned IR codes to/
   byte PlayKey;
   byte OneFrameKey;
   byte IntervalKey;
-  byte UpKey;
-  byte DownKey;
-  byte LeftKey;
-  byte RightKey;
+  byte FasterKey;
+  byte SlowerKey;
+  byte DoubleSpeedKey;
+  byte HalfSpeedKey;
 };
 
 
@@ -112,14 +111,14 @@ void setup() {
 
   RC IR;                              // Variable to store custom object reads from EEPROM
   EEPROM.get(0, IR);                  // Read from the beginning, there is nothing else in the EEPORM
-  learnedIrRcCode      = IR.RcCode;
-  learnedIrPlayKey     = IR.PlayKey;
-  learnedIrOneFrameKey = IR.OneFrameKey;
-  learnedIrIntervalKey = IR.IntervalKey;
-  learnedIrUpKey       = IR.UpKey;
-  learnedIrDownKey     = IR.DownKey;
-  learnedIrLeftKey     = IR.LeftKey;
-  learnedIrRightKey    = IR.RightKey;
+  learnedIrRcCode         = IR.RcCode;
+  learnedIrPlayKey        = IR.PlayKey;
+  learnedIrOneFrameKey    = IR.OneFrameKey;
+  learnedIrIntervalKey    = IR.IntervalKey;
+  learnedIrFasterKey      = IR.FasterKey;
+  learnedIrSlowerKey      = IR.SlowerKey;
+  learnedIrDoubleSpeedKey = IR.DoubleSpeedKey;
+  learnedIrHalfSpeedKey   = IR.HalfSpeedKey;
 
   noInterrupts();
   
@@ -153,13 +152,13 @@ void ReceivedCode(boolean Repeat) {
     if (justBooted && !learnMode) {
       learnedIrRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
       
-      learnedIrPlayKey   = 0xFFFF;       // forget all pre-defined key codes to re-learn them
-      learnedIrOneFrameKey = 0xFFFF;       // we make the 0xFFFF to allow them being 0xFF.
-      learnedIrIntervalKey   = 0xFFFF;       // use ALL the memory! :)
-      learnedIrUpKey     = 0xFFFF;
-      learnedIrDownKey   = 0xFFFF;  
-      learnedIrLeftKey   = 0xFFFF;    
-      learnedIrRightKey  = 0xFFFF;  
+      learnedIrPlayKey        = 0xFFFF;       // forget all pre-defined key codes to re-learn them
+      learnedIrOneFrameKey    = 0xFFFF;       // we make the 0xFFFF to allow them being 0xFF.
+      learnedIrIntervalKey    = 0xFFFF;       // use ALL the memory! :)
+      learnedIrFasterKey      = 0xFFFF;
+      learnedIrSlowerKey      = 0xFFFF;  
+      learnedIrDoubleSpeedKey = 0xFFFF;    
+      learnedIrHalfSpeedKey   = 0xFFFF;  
   
       blinkLEDtwice();
       learnMode = true;           // let's learn some keys. Next calls go into the following if-block.
@@ -169,24 +168,24 @@ void ReceivedCode(boolean Repeat) {
       
         blinkLEDtwice();
         key = receivedData>>16 & 0xFF;
-             if (learnedIrPlayKey == 0xFFFF)      learnedIrPlayKey = key;
-        else if (learnedIrOneFrameKey == 0xFFFF)  learnedIrOneFrameKey = key; 
-        else if (learnedIrIntervalKey == 0xFFFF)  learnedIrIntervalKey = key; 
-        else if (learnedIrUpKey == 0xFFFF)        learnedIrUpKey = key; 
-        else if (learnedIrDownKey == 0xFFFF)      learnedIrDownKey = key; 
-        else if (learnedIrLeftKey == 0xFFFF)      learnedIrLeftKey = key; 
-        else if (learnedIrRightKey == 0xFFFF)  {
-          learnedIrRightKey = key; 
+             if (learnedIrPlayKey == 0xFFFF)        learnedIrPlayKey = key;
+        else if (learnedIrOneFrameKey == 0xFFFF)    learnedIrOneFrameKey = key; 
+        else if (learnedIrIntervalKey == 0xFFFF)    learnedIrIntervalKey = key; 
+        else if (learnedIrFasterKey == 0xFFFF)      learnedIrFasterKey = key; 
+        else if (learnedIrSlowerKey == 0xFFFF)      learnedIrSlowerKey = key; 
+        else if (learnedIrDoubleSpeedKey == 0xFFFF) learnedIrDoubleSpeedKey = key; 
+        else if (learnedIrHalfSpeedKey == 0xFFFF) {
+          learnedIrHalfSpeedKey = key; 
           // store all keys to EEPROM here
           RC IR = {
             learnedIrRcCode,
             learnedIrPlayKey,
             learnedIrOneFrameKey,
             learnedIrIntervalKey,
-            learnedIrUpKey,
-            learnedIrDownKey,
-            learnedIrLeftKey,
-            learnedIrRightKey
+            learnedIrFasterKey,
+            learnedIrSlowerKey,
+            learnedIrDoubleSpeedKey,
+            learnedIrHalfSpeedKey
           };
           EEPROM.put(0, IR);
           
@@ -241,18 +240,18 @@ void ReceivedCode(boolean Repeat) {
         } else if (((key == appleIrIntervalKey) || (key == learnedIrIntervalKey)) && !Repeat) {         
           if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
           else                         TIMSK |= (1 << OCIE1A);   // disable timer interrupt
-        } else if (((key == appleIrDownKey) || (key == learnedIrDownKey)) && !Repeat) {
+        } else if (((key == appleIrSlowerKey) || (key == learnedIrSlowerKey)) && !Repeat) {
           oldIntervalStep = newIntervalStep;
           newIntervalStep = constrain(oldIntervalStep + 10, 1, 255);
-        } else if (((key == appleIrUpKey)   || (key == learnedIrUpKey)) && !Repeat) {
+        } else if (((key == appleIrFasterKey)   || (key == learnedIrFasterKey)) && !Repeat) {
           oldIntervalStep = newIntervalStep;
           if (postscaler <= 4) {  // This could lead to intervals <200ms, which we do want to avoid
             newIntervalStep = constrain(oldIntervalStep - 10, 11, 255);
           } else {
             newIntervalStep = constrain(oldIntervalStep - 10, 1, 255);
           }
-        } else if (((key == appleIrRightKey) || (key == learnedIrRightKey)) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
-        else if   (((key == appleIrLeftKey)  || (key == learnedIrLeftKey))  && !Repeat) {
+        } else if (((key == appleIrHalfSpeedKey) || (key == learnedIrHalfSpeedKey)) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
+        else if   (((key == appleIrDoubleSpeedKey)  || (key == learnedIrDoubleSpeedKey))  && !Repeat) {
           postscaler = constrain(postscaler / 2, 1, 32768);
           if ((newIntervalStep < 11) && (postscaler <= 4)) newIntervalStep = 11; }
         else if ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin))   startRunWithMetering();
