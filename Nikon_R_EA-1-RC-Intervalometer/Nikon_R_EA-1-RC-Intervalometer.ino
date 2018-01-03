@@ -43,8 +43,8 @@ damage the camera... who wants that?
 
 const unsigned int   appleIrRcCode  = 0x87EE;  // Apple Remote (all models) 87EE
 const byte  appleIrPlayKey          = 0x2F;    // Play (Alu RC)
-const byte  appleIrCenterKey        = 0x2E;    // Center (Alu RC)
-const byte  appleIrMenuKey          = 0x01;    // Menu
+const byte  appleIrOneFrameKey      = 0x2E;    // Center (Alu RC)
+const byte  appleIrIntervalKey      = 0x01;    // Menu
 const byte  appleIrUpKey            = 0x05;    // Up
 const byte  appleIrDownKey          = 0x06;    // Down
 const byte  appleIrLeftKey          = 0x04;    // Left
@@ -53,8 +53,8 @@ const byte  appleIrWhitePlayKey     = 0x02;    // Play (old white Apple Remote)
 
 volatile unsigned int  learnedIrRcCode       = 0;       // This is where the learned IR Codes go,
 volatile unsigned int  learnedIrPlayKey      = 0;       // either loaded from EEPROM or freshly
-volatile unsigned int  learnedIrCenterKey    = 0;       // learned.
-volatile unsigned int  learnedIrMenuKey      = 0;    
+volatile unsigned int  learnedIrOneFrameKey  = 0;       // learned.
+volatile unsigned int  learnedIrIntervalKey  = 0;    
 volatile unsigned int  learnedIrUpKey        = 0;    
 volatile unsigned int  learnedIrDownKey      = 0;    
 volatile unsigned int  learnedIrLeftKey      = 0;    
@@ -64,8 +64,8 @@ volatile unsigned int  learnedIrRightKey     = 0;
 struct RC {           // This is used to store and retrieve learned IR codes to/from EEPROM
   int  RcCode;
   byte PlayKey;
-  byte CenterKey;
-  byte MenuKey;
+  byte OneFrameKey;
+  byte IntervalKey;
   byte UpKey;
   byte DownKey;
   byte LeftKey;
@@ -112,14 +112,14 @@ void setup() {
 
   RC IR;                              // Variable to store custom object reads from EEPROM
   EEPROM.get(0, IR);                  // Read from the beginning, there is nothing else in the EEPORM
-  learnedIrRcCode    = IR.RcCode;
-  learnedIrPlayKey   = IR.PlayKey;
-  learnedIrCenterKey = IR.CenterKey;
-  learnedIrMenuKey   = IR.MenuKey;
-  learnedIrUpKey     = IR.UpKey;
-  learnedIrDownKey   = IR.DownKey;
-  learnedIrLeftKey   = IR.LeftKey;
-  learnedIrRightKey  = IR.RightKey;
+  learnedIrRcCode      = IR.RcCode;
+  learnedIrPlayKey     = IR.PlayKey;
+  learnedIrOneFrameKey = IR.OneFrameKey;
+  learnedIrIntervalKey = IR.IntervalKey;
+  learnedIrUpKey       = IR.UpKey;
+  learnedIrDownKey     = IR.DownKey;
+  learnedIrLeftKey     = IR.LeftKey;
+  learnedIrRightKey    = IR.RightKey;
 
   noInterrupts();
   
@@ -154,8 +154,8 @@ void ReceivedCode(boolean Repeat) {
       learnedIrRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
       
       learnedIrPlayKey   = 0xFFFF;       // forget all pre-defined key codes to re-learn them
-      learnedIrCenterKey = 0xFFFF;       // we make the 0xFFFF to allow them being 0xFF.
-      learnedIrMenuKey   = 0xFFFF;       // use ALL the memory! :)
+      learnedIrOneFrameKey = 0xFFFF;       // we make the 0xFFFF to allow them being 0xFF.
+      learnedIrIntervalKey   = 0xFFFF;       // use ALL the memory! :)
       learnedIrUpKey     = 0xFFFF;
       learnedIrDownKey   = 0xFFFF;  
       learnedIrLeftKey   = 0xFFFF;    
@@ -169,20 +169,20 @@ void ReceivedCode(boolean Repeat) {
       
         blinkLEDtwice();
         key = receivedData>>16 & 0xFF;
-             if (learnedIrPlayKey == 0xFFFF)   learnedIrPlayKey = key;
-        else if (learnedIrCenterKey == 0xFFFF) learnedIrCenterKey = key; 
-        else if (learnedIrMenuKey == 0xFFFF)   learnedIrMenuKey = key; 
-        else if (learnedIrUpKey == 0xFFFF)     learnedIrUpKey = key; 
-        else if (learnedIrDownKey == 0xFFFF)   learnedIrDownKey = key; 
-        else if (learnedIrLeftKey == 0xFFFF)   learnedIrLeftKey = key; 
+             if (learnedIrPlayKey == 0xFFFF)      learnedIrPlayKey = key;
+        else if (learnedIrOneFrameKey == 0xFFFF)  learnedIrOneFrameKey = key; 
+        else if (learnedIrIntervalKey == 0xFFFF)  learnedIrIntervalKey = key; 
+        else if (learnedIrUpKey == 0xFFFF)        learnedIrUpKey = key; 
+        else if (learnedIrDownKey == 0xFFFF)      learnedIrDownKey = key; 
+        else if (learnedIrLeftKey == 0xFFFF)      learnedIrLeftKey = key; 
         else if (learnedIrRightKey == 0xFFFF)  {
           learnedIrRightKey = key; 
           // store all keys to EEPROM here
           RC IR = {
             learnedIrRcCode,
             learnedIrPlayKey,
-            learnedIrCenterKey,
-            learnedIrMenuKey,
+            learnedIrOneFrameKey,
+            learnedIrIntervalKey,
             learnedIrUpKey,
             learnedIrDownKey,
             learnedIrLeftKey,
@@ -229,16 +229,16 @@ void ReceivedCode(boolean Repeat) {
         }
         
         // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
-        if (((key == appleIrCenterKey) && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode) || 
+        if (((key == appleIrOneFrameKey) && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode) || 
             ((key == appleIrPlayKey)   && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode)) aluRemote = true;
         
         // Now let's determine what to do -- as in match keys to actions.
         if      (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
         else if (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && digitalRead(lightmeterPin))  stopRun();
-        else if (((key == appleIrCenterKey) || (key == learnedIrCenterKey)) && !Repeat) {
+        else if (((key == appleIrOneFrameKey) || (key == learnedIrOneFrameKey)) && !Repeat) {
           if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnce();
           singleFrame();
-        } else if (((key == appleIrMenuKey) || (key == learnedIrMenuKey)) && !Repeat) {         
+        } else if (((key == appleIrIntervalKey) || (key == learnedIrIntervalKey)) && !Repeat) {         
           if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
           else                         TIMSK |= (1 << OCIE1A);   // disable timer interrupt
         } else if (((key == appleIrDownKey) || (key == learnedIrDownKey)) && !Repeat) {
@@ -314,7 +314,7 @@ void loop() {
  *  first n ms after powerup.
  */
   if (justBooted) {
-    if ((startMillis + 300) < millis()) {
+    if ((startMillis + 250) < millis()) {
       justBooted = false;
       if (!learnMode) digitalWrite(ledPin, LOW);
     }
