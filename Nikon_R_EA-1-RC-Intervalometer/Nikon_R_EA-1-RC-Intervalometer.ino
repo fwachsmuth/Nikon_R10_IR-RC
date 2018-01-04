@@ -1,9 +1,6 @@
 /* ATtiny85 IR Remote Control Receiver
  * To Do:
- *  [ ] Gloablize Timing of Trigger Stages
- *  [ ] Prevent collision of intervals shorter than lightmetering phase
- *  [ ] Bug in stopRun()
- *  [ ] Enable permanent light metering when running a fast interval
+ *  [ ] Prevent learning Apple Remote
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
@@ -102,9 +99,9 @@ bool aluRemote = false;     // Apple's Alumium Remote has one more key than the 
                             // that our RC is not the white one.
 
 unsigned long startMillis = 0;
-volatile bool justBooted = true;            // Flag to support the Settings Mode available right after power-up
-volatile bool learnMode  = false;           // This is true if we entered IR learning mode. IR commands cause no camera action then.
-volatile bool intervalIsLongEnough = true;  // This will go false if the intervalometer frequency does not allow ad hoc light metering
+volatile bool justBooted = true;              // Flag to support the Settings Mode available right after power-up
+volatile bool learnMode  = false;             // This is true if we entered IR learning mode. IR commands cause no camera action then.
+volatile bool intervalIsLongEnough = true;    // This will go false if the intervalometer frequency does not allow ad hoc light metering
 
 // *** Setup **********************************************
 void setup() {
@@ -237,7 +234,7 @@ void ReceivedCode(boolean Repeat) {
         
         // Now let's determine what to do -- as in match keys to actions.
         if      (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
-        else if (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && digitalRead(lightmeterPin))  stopRun();
+        else if (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat &&  digitalRead(lightmeterPin)) stopRun();
         else if (((key == appleIrOneFrameKey) || (key == learnedIrOneFrameKey)) && !Repeat) {
           if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnceThoroughly();
           singleFrame();
@@ -267,25 +264,12 @@ void ReceivedCode(boolean Repeat) {
       }
 
       switch (postscaler) {
-        case 1:
-          if (newIntervalStep <= 51) intervalIsLongEnough = false;
-          else intervalIsLongEnough = true;
-        break;
-        case 2:
-          if (newIntervalStep <= 21) intervalIsLongEnough = false;
-          else intervalIsLongEnough = true;
-        break;
-        case 4: 
-          if (newIntervalStep == 11) intervalIsLongEnough = false;
-          else intervalIsLongEnough = true;
-        break;
-        case 8: case 16:
-          if (newIntervalStep == 1) intervalIsLongEnough = false;
-          else intervalIsLongEnough = true;
-        break;
-        default:
-          intervalIsLongEnough = true;
-        break;
+        // This checks if we have an interval shorter than 0.5 second. In that case, we toggle a flag
+        // and don't turn on the lightmeter before the frame's exposure.
+        case 1:  intervalIsLongEnough = !(newIntervalStep <= 21); break;
+        case 2:  intervalIsLongEnough = !(newIntervalStep <= 11); break;
+        case 8:  intervalIsLongEnough = !(newIntervalStep <=  1); break;
+        default: intervalIsLongEnough = true; break;
       }
 
       if (blinkFlag) blinkLED();
@@ -373,9 +357,6 @@ void startRunWithMetering() {
   triggerStage2();
 }
 void stopRun() {
-  triggerStage1();                // bug?
-  digitalWrite(startPin, LOW);
-  _delay_ms(30);
   triggerStage1();
   _delay_ms(30);
   triggerStage0();
@@ -393,10 +374,7 @@ void singleIntervalFrame() {
     triggerStage1();
     _delay_ms(350); 
     triggerStage0();
-  } else {
-//    turnOnLightMeter();
-  }
-
+  } 
   digitalWrite(startPin, HIGH);
   _delay_ms(10);
   digitalWrite(startPin, LOW);
