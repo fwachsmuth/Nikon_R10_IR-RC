@@ -1,6 +1,9 @@
 /* ATtiny85 IR Remote Control Receiver
  * To Do:
- *  [ ] Consider lightmetering in interval modes (long ones maybe?)
+ *  [ ] Gloablize Timing of Trigger Stages
+ *  [ ] Prevent collision of intervals shorter than lightmetering phase
+ *  [ ] Bug in stopRun()
+ *  [ ] Enable permanent light metering when running a fast interval
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
@@ -99,8 +102,9 @@ bool aluRemote = false;     // Apple's Alumium Remote has one more key than the 
                             // that our RC is not the white one.
 
 unsigned long startMillis = 0;
-volatile bool justBooted = true;     // Flag to support the Settings Mode available right after power-up
-volatile bool learnMode  = false;    // This is true if we entered IR learning mode. IR commands cause no camera action then.
+volatile bool justBooted = true;            // Flag to support the Settings Mode available right after power-up
+volatile bool learnMode  = false;           // This is true if we entered IR learning mode. IR commands cause no camera action then.
+volatile bool intervalIsLongEnough = true;  // This will go false if the intervalometer frequency does not allow ad hoc light metering
 
 // *** Setup **********************************************
 void setup() {
@@ -229,13 +233,13 @@ void ReceivedCode(boolean Repeat) {
         
         // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
         if (((key == appleIrOneFrameKey) && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode) || 
-            ((key == appleIrPlayKey)   && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode)) aluRemote = true;
+            ((key == appleIrPlayKey)     && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode)) aluRemote = true;
         
         // Now let's determine what to do -- as in match keys to actions.
         if      (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
         else if (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && digitalRead(lightmeterPin))  stopRun();
         else if (((key == appleIrOneFrameKey) || (key == learnedIrOneFrameKey)) && !Repeat) {
-          if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnce();
+          if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnceThoroughly();
           singleFrame();
         } else if (((key == appleIrIntervalKey) || (key == learnedIrIntervalKey)) && !Repeat) {         
           if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
@@ -253,11 +257,37 @@ void ReceivedCode(boolean Repeat) {
         } else if (((key == appleIrHalfSpeedKey) || (key == learnedIrHalfSpeedKey)) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
         else if   (((key == appleIrDoubleSpeedKey)  || (key == learnedIrDoubleSpeedKey))  && !Repeat) {
           postscaler = constrain(postscaler / 2, 1, 32768);
-          if ((newIntervalStep < 11) && (postscaler <= 4)) newIntervalStep = 11; }
+          if ((newIntervalStep < 11) && (postscaler <= 4)) {
+            newIntervalStep = 11;
+            postscaler = 4; }
+          }
         else if ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin))   startRunWithMetering();
         else if ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote &&  digitalRead(lightmeterPin))   stopRun();
         else blinkFlag = false;   // if we received a partial or garbled IR code, let's not confirm reception
       }
+
+      switch (postscaler) {
+        case 1:
+          if (newIntervalStep <= 51) intervalIsLongEnough = false;
+          else intervalIsLongEnough = true;
+        break;
+        case 2:
+          if (newIntervalStep <= 21) intervalIsLongEnough = false;
+          else intervalIsLongEnough = true;
+        break;
+        case 4: 
+          if (newIntervalStep == 11) intervalIsLongEnough = false;
+          else intervalIsLongEnough = true;
+        break;
+        case 8: case 16:
+          if (newIntervalStep == 1) intervalIsLongEnough = false;
+          else intervalIsLongEnough = true;
+        break;
+        default:
+          intervalIsLongEnough = true;
+        break;
+      }
+
       if (blinkFlag) blinkLED();
       blinkFlag = true;   // Let's assume the next code is a valid one
     }
@@ -301,10 +331,11 @@ ISR(TIMER1_COMPA_vect) {
     OCR1A = OCR1C;
   }
   if (divider == 0) {
-    singleFrame();
+    singleIntervalFrame();  // This sub determines if we have time to do adhoc exposure measurement or not.
+    blinkLED();             // LED is connected to the Load-Pin, so this has two effects!
   }
   divider++;
-  divider %= postscaler;  // modulo trick to allow intervals > 4.3 Sec
+  divider %= postscaler;    // modulo trick to allow intervals > 4.3 Sec
 }
 
 void loop() {
@@ -337,43 +368,67 @@ void blinkLEDtwice() {
 }
 void startRunWithMetering() {
 // Regular start cycle as with the EA-1 wire
-  digitalWrite(lightmeterPin, HIGH);
-  digitalWrite(holdPin, HIGH);  
-  digitalWrite(loadPin, HIGH);
-  _delay_ms(250);      
-  digitalWrite(loadPin, LOW);
-  _delay_ms(70);      
-  digitalWrite(startPin, HIGH);
+  triggerStage1();
+  _delay_ms(200);       // Let the Lightmeter Needle settle
+  triggerStage2();
 }
 void stopRun() {
+  triggerStage1();                // bug?
   digitalWrite(startPin, LOW);
-  _delay_ms(70);      
-  digitalWrite(holdPin, LOW);  
+  _delay_ms(30);
+  triggerStage1();
+  _delay_ms(30);
+  triggerStage0();
 
-  digitalWrite(lightmeterPin, LOW);
-  digitalWrite(ledPin, HIGH);  
-  _delay_ms(250);
-  digitalWrite(ledPin, LOW);  
-  lmMode = LM_MODE_1ST_SINGLESHOT;
+  lmMode = LM_MODE_1ST_SINGLESHOT;      // remember to thoroughly measure light if next exposure is a single frame exposure
 }
-void meterOnce() {
-  digitalWrite(lightmeterPin, HIGH);
-  digitalWrite(ledPin, HIGH);  
+void meterOnceThoroughly() {
+  triggerStage1();
   _delay_ms(350);
-  digitalWrite(ledPin, LOW);  
-  digitalWrite(lightmeterPin, LOW);
-  lmMode = LM_MODE_SUB_SINGLESHOT;
+  triggerStage0();
+  lmMode = LM_MODE_SUB_SINGLESHOT;      // if next exposure is is a single frame exposure, a quick measurement is fine.
  }
-void singleFrame() {
-  digitalWrite(loadPin, HIGH);
-  _delay_ms(10);                // 10ms might be short but subsequent exposures will have a pre-loaded cap.
-  digitalWrite(loadPin, LOW);
+void singleIntervalFrame() {
+  if (intervalIsLongEnough) {
+    triggerStage1();
+    _delay_ms(350); 
+    triggerStage0();
+  } else {
+//    turnOnLightMeter();
+  }
+
   digitalWrite(startPin, HIGH);
   _delay_ms(10);
   digitalWrite(startPin, LOW);
-  digitalWrite(loadPin, HIGH);  // Pre-load the start capacitor since for the next exposure. Reduces latency. :)
-  _delay_ms(20);        
+}
+void singleFrame() {
+  digitalWrite(startPin, HIGH);
+  _delay_ms(10);
+  digitalWrite(startPin, LOW);
+}
+
+void triggerStage0() {
+  digitalWrite(holdPin, LOW);  
   digitalWrite(loadPin, LOW);
+  digitalWrite(startPin, LOW);
+  digitalWrite(lightmeterPin, LOW);
+}
+void triggerStage1() {
+  digitalWrite(holdPin, HIGH);  
+  digitalWrite(loadPin, HIGH);
+  digitalWrite(startPin, LOW);
+  digitalWrite(lightmeterPin, HIGH);
+}
+void triggerStage2() {
+  digitalWrite(holdPin, HIGH);  
+  digitalWrite(loadPin, LOW);
+  digitalWrite(startPin, LOW);
+  digitalWrite(lightmeterPin, HIGH);
+  _delay_ms(30);      
+  digitalWrite(holdPin, HIGH);  
+  digitalWrite(loadPin, LOW);
+  digitalWrite(startPin, HIGH);
+  digitalWrite(lightmeterPin, HIGH);
 }
 
 
