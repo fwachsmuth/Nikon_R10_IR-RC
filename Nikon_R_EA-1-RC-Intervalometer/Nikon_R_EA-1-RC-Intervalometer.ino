@@ -1,6 +1,6 @@
 /* ATtiny85 IR Remote Control Receiver
  * To Do:
- *  [ ] Prevent learning Apple Remote
+ 
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
@@ -151,18 +151,20 @@ void ReceivedCode(boolean Repeat) {
   // Skip everything if we receive obvious garbage
   if ( ((receivedData>>16 & 0xFF) != 0xFF) && ((receivedData>>16 & 0xFF) != 0x00) ) {   
     if (justBooted && !learnMode) {
-      learnedIrRcCode = (receivedData & 0xFFFF); // extract the RC's Address Code
-      
-      learnedIrPlayKey        = 0xFFFF;       // forget all pre-defined key codes to re-learn them
-      learnedIrOneFrameKey    = 0xFFFF;       // we make the 0xFFFF to allow them being 0xFF.
-      learnedIrIntervalKey    = 0xFFFF;       // use ALL the memory! :)
-      learnedIrFasterKey      = 0xFFFF;
-      learnedIrSlowerKey      = 0xFFFF;  
-      learnedIrDoubleSpeedKey = 0xFFFF;    
-      learnedIrHalfSpeedKey   = 0xFFFF;  
-  
-      blinkLEDtwice();
-      learnMode = true;           // let's learn some keys. Next calls go into the following if-block.
+      if ((receivedData & 0xFFFF) != appleIrRcCode) {  // Prevent learning from an Apple Remote
+        learnedIrRcCode = (receivedData & 0xFFFF);      // extract the RC's Address Code
+        
+        learnedIrPlayKey        = 0xFFFF;               // forget all pre-defined key codes to re-learn them
+        learnedIrOneFrameKey    = 0xFFFF;               // we make the 0xFFFF to allow them being 0xFF.
+        learnedIrIntervalKey    = 0xFFFF;               // use ALL the memory! :)
+        learnedIrFasterKey      = 0xFFFF;
+        learnedIrSlowerKey      = 0xFFFF;  
+        learnedIrDoubleSpeedKey = 0xFFFF;    
+        learnedIrHalfSpeedKey   = 0xFFFF;  
+    
+        blinkLEDtwice();
+        learnMode = true;           // let's learn some keys. Next calls go into the following if-block.
+      }
   
     } else if (learnMode) {
       if (((receivedData & 0xFFFF) == learnedIrRcCode) && !Repeat) {
