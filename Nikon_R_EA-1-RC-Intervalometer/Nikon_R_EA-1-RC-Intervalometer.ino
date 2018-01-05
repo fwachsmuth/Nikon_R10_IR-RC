@@ -1,6 +1,7 @@
 /* ATtiny85 IR Remote Control Receiver
  * To Do:
- 
+ * Advanced Power Management (Sleep)
+
 
 This code simulates the Nikon EA-1 Remote Control Switch and adds extra functions, 
 like IR-Remote control support and a nifty intervalometer with 416 different intervals
