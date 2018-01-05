@@ -222,45 +222,54 @@ void ReceivedCode(boolean Repeat) {
         // This is known IR transmitters, either trained ones or an Apple Remote.
         // Does all the fancy functions.
 
-        if ((receivedData & 0xFFFF) == appleIrRcCode) {
+        if ((receivedData & 0xFFFF) == appleIrRcCode) 
           key = receivedData>>17 & 0x7F;        // extracting the command byte, ignoring the 1-bit to match all Apple Remotes
-        } else {
+        else 
           key = receivedData>>16 & 0xFF;        // extract the command byte the normal way, no bit shifting and chopping.
-        }
+       
         
         // If we receive codes unique to an alu RC, let's remember that to fight ambiguity
-        if (((key == appleIrOneFrameKey) && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode) || 
-            ((key == appleIrPlayKey)     && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode)) aluRemote = true;
+        if      (((key == appleIrOneFrameKey) && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode) || 
+                 ((key == appleIrPlayKey)     && !Repeat && (receivedData & 0xFFFF) == appleIrRcCode)) aluRemote = true;
+
         
-        // Now let's determine what to do -- as in match keys to actions.
-        if      (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
-        else if (((key == appleIrPlayKey)   || (key == learnedIrPlayKey))   && !Repeat &&  digitalRead(lightmeterPin)) stopRun();
-        else if (((key == appleIrOneFrameKey) || (key == learnedIrOneFrameKey)) && !Repeat) {
+        // ******************************** Now let's determine what to do -- as in match keys to actions. ********************************
+        
+        if      (((key == appleIrPlayKey)        || (key == learnedIrPlayKey))   && !Repeat && !digitalRead(lightmeterPin)) startRunWithMetering();
+        else if (((key == appleIrPlayKey)        || (key == learnedIrPlayKey))   && !Repeat &&  digitalRead(lightmeterPin)) stopRun();
+        
+        else if (((key == appleIrOneFrameKey)    || (key == learnedIrOneFrameKey)) && !Repeat) {
           if (lmMode == LM_MODE_1ST_SINGLESHOT) meterOnceThoroughly();
-          singleFrame();
-        } else if (((key == appleIrIntervalKey) || (key == learnedIrIntervalKey)) && !Repeat) {         
-          if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);  // enable timer interrupt
-          else                         TIMSK |= (1 << OCIE1A);   // disable timer interrupt
-        } else if (((key == appleIrSlowerKey) || (key == learnedIrSlowerKey)) && !Repeat) {
+          singleFrame(); }
+        
+        else if (((key == appleIrIntervalKey)    || (key == learnedIrIntervalKey)) && !Repeat) {         
+          if (TIMSK & ( 1 << OCIE1A )) TIMSK &= ~(1 << OCIE1A);   // enable timer interrupt
+          else                         TIMSK |= (1 << OCIE1A); }  // disable timer interrupt 
+                
+        else if (((key == appleIrSlowerKey)      || (key == learnedIrSlowerKey)) && !Repeat) {
           oldIntervalStep = newIntervalStep;
-          newIntervalStep = constrain(oldIntervalStep + 10, 1, 255);
-        } else if (((key == appleIrFasterKey)   || (key == learnedIrFasterKey)) && !Repeat) {
+          newIntervalStep = constrain(oldIntervalStep + 10, 1, 255); }
+
+        else if (((key == appleIrFasterKey)      || (key == learnedIrFasterKey)) && !Repeat) {
           oldIntervalStep = newIntervalStep;
-          if (postscaler <= 4) {  // This could lead to intervals <200ms, which we do want to avoid
+          if (postscaler <= 4)   // This could lead to intervals <200ms, which we do want to avoid
             newIntervalStep = constrain(oldIntervalStep - 10, 11, 255);
-          } else {
-            newIntervalStep = constrain(oldIntervalStep - 10, 1, 255);
-          }
-        } else if (((key == appleIrHalfSpeedKey) || (key == learnedIrHalfSpeedKey)) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
-        else if   (((key == appleIrDoubleSpeedKey)  || (key == learnedIrDoubleSpeedKey))  && !Repeat) {
+          else 
+            newIntervalStep = constrain(oldIntervalStep - 10, 1, 255); }
+          
+        else if (((key == appleIrHalfSpeedKey)   || (key == learnedIrHalfSpeedKey)) && !Repeat) postscaler = constrain(postscaler * 2, 1, 32768);
+        
+        else if (((key == appleIrDoubleSpeedKey) || (key == learnedIrDoubleSpeedKey))  && !Repeat) {
           postscaler = constrain(postscaler / 2, 1, 32768);
           if ((newIntervalStep < 11) && (postscaler <= 4)) {
             newIntervalStep = 11;
-            postscaler = 4; }
-          }
-        else if ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin))   startRunWithMetering();
-        else if ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote &&  digitalRead(lightmeterPin))   stopRun();
+            postscaler = 4; } }
+
+        else if    ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote && !digitalRead(lightmeterPin))   startRunWithMetering();
+        else if    ((key == appleIrWhitePlayKey) && !Repeat && !aluRemote &&  digitalRead(lightmeterPin))   stopRun();
+
         else blinkFlag = false;   // if we received a partial or garbled IR code, let's not confirm reception
+      
       }
 
       switch (postscaler) {
